@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; worker-src blob:; connect-src 'none'; frame-src 'none'; object-src 'none'; media-src 'none'; manifest-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>安全文件轉 Markdown</title>
+<style>
+:root{
+  --bg:#f6f5f1; --panel:#ffffff; --ink:#1d2321; --muted:#5f6a66; --line:#dcdcd4;
+  --accent:#1f6f5c; --accent-ink:#ffffff; --accent-soft:#e3efe9; --warn:#8a5a00; --warn-bg:#fbf1dc; --bad:#a3302a; --bad-bg:#f8e3e1;
+  --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Noto Sans Mono CJK TC", monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root{ --bg:#141816; --panel:#1c211f; --ink:#e6ebe8; --muted:#9aa6a1; --line:#2f3733;
+    --accent:#5fbf9f; --accent-ink:#0c1512; --accent-soft:#1f2e28; --warn:#e7b85a; --warn-bg:#2d2618; --bad:#f08a82; --bad-bg:#331d1b; }
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 system-ui,-apple-system,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif}
+main{max-width:980px;margin:0 auto;padding:28px 20px 60px}
+h1{font-size:1.55rem;margin:0 0 4px;letter-spacing:.01em}
+.sub{color:var(--muted);margin:0 0 22px}
+.shield{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:18px}
+.shield h2{font-size:1rem;margin:0 0 10px;display:flex;gap:8px;align-items:center}
+.badge{font-size:.75rem;background:var(--accent-soft);color:var(--accent);padding:2px 8px;border-radius:99px;font-weight:600}
+.checks{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:6px 18px;margin:0;padding:0;list-style:none}
+.checks li{padding-left:22px;position:relative;font-size:.92rem}
+.checks li::before{content:"✓";position:absolute;left:0;color:var(--accent);font-weight:700}
+.checks small{color:var(--muted)}
+.testrow{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:12px;font-size:.88rem}
+#selftest-result.ok{color:var(--accent)} #selftest-result.bad{color:var(--bad)}
+#seclog{margin-top:10px;font:12px/1.5 var(--mono);color:var(--muted);max-height:120px;overflow:auto}
+.drop{border:2px dashed var(--line);border-radius:14px;background:var(--panel);padding:34px 20px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s}
+.drop:hover,.drop:focus-visible,.drop.over{border-color:var(--accent);background:var(--accent-soft);outline:none}
+.drop strong{display:block;font-size:1.08rem;margin-bottom:4px}
+.drop .fmt{color:var(--muted);font-size:.88rem}
+.opts{display:flex;flex-wrap:wrap;gap:8px 22px;margin:12px 2px 22px;font-size:.9rem;color:var(--muted)}
+.opts label{display:flex;gap:6px;align-items:center;cursor:pointer}
+.btn{font:inherit;font-size:.86rem;border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);border-radius:8px;padding:5px 12px;cursor:pointer;white-space:nowrap}
+.btn.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+.btn:hover{filter:brightness(1.08)}
+.btn[hidden]{display:none}
+#bulk{display:flex;gap:8px;justify-content:flex-end;margin-bottom:10px}
+#bulk[hidden]{display:none}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:14px}
+.card header{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center}
+.fname{font-weight:600;word-break:break-all}
+.meta{color:var(--muted);font-size:.85rem;flex:1}
+.actions{display:flex;gap:6px}
+.card textarea{width:100%;min-height:260px;margin-top:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:13px/1.55 var(--mono);padding:10px;resize:vertical}
+.warn{margin-top:8px;font-size:.86rem;background:var(--warn-bg);color:var(--warn);padding:6px 10px;border-radius:8px}
+.card.error .warn{background:var(--bad-bg);color:var(--bad)}
+.small{margin-top:8px}
+#empty{color:var(--muted);text-align:center;padding:24px 0;font-size:.92rem}
+details.notes{margin-top:30px;color:var(--muted);font-size:.88rem}
+details.notes summary{cursor:pointer;color:var(--ink);font-weight:600}
+details.notes li{margin:4px 0}
+code{font-family:var(--mono);font-size:.85em;background:var(--accent-soft);padding:1px 5px;border-radius:4px}
+</style>
+</head>
+<body>
+<main>
+  <h1>安全文件轉 Markdown</h1>
+  <p class="sub">Secure Document → Markdown Converter · 檔案只在你的瀏覽器裡處理，不會離開這台裝置　<span class="badge" id="ready">載入中…</span></p>
+
+  <section class="shield" aria-labelledby="shield-h">
+    <h2 id="shield-h">安全防護 <span class="badge">Security</span></h2>
+    <ul class="checks">
+      <li>本機處理（Client-side processing）<br><small>轉檔程式全部內嵌在頁面裡，不需要伺服器</small></li>
+      <li>封鎖所有對外連線（Network isolation）<br><small>內容安全政策 CSP <code>connect-src 'none'</code></small></li>
+      <li>不依賴外部 CDN（No third-party scripts）<br><small>避免供應鏈攻擊（Supply-chain attack）</small></li>
+      <li>不儲存任何資料（No storage）<br><small>不使用 Cookie / localStorage，離開頁面即清除</small></li>
+      <li>結果只當純文字顯示（XSS-safe output）<br><small>文件中的 HTML／腳本不會被執行</small></li>
+      <li>PDF 安全模式（Hardened PDF parsing）<br><small>停用 eval、外部字型、XFA 表單</small></li>
+      <li>防壓縮炸彈（Zip-bomb guard）<br><small>限制解壓縮體積、比例與項目數</small></li>
+      <li>移除網址轉檔（No URL fetching）<br><small>原網站此功能需經伺服器代理，本版不提供</small></li>
+    </ul>
+    <div class="testrow">
+      <button class="btn ghost" id="selftest" type="button">自我檢測：嘗試對外連線</button>
+      <span id="selftest-result">按下後會嘗試連到外部網址，應全部被封鎖</span>
+      <span>已攔截次數：<b id="violations">0</b></span>
+    </div>
+    <div id="seclog" hidden></div>
+  </section>
+
+  <div class="drop" id="drop" tabindex="0" role="button" aria-label="選擇或拖放檔案">
+    <strong>拖放檔案到這裡，或點一下選擇檔案</strong>
+    <span class="fmt">PDF · DOCX · XLSX · PPTX · HTML · EPUB · CSV / TSV · TXT · JSON · XML　（可一次多檔，單檔上限 100 MB）</span>
+  </div>
+  <input type="file" id="file" multiple hidden accept=".pdf,.docx,.xlsx,.xlsm,.pptx,.html,.htm,.xhtml,.epub,.csv,.tsv,.txt,.md,.markdown,.json,.xml">
+
+  <div class="opts">
+    <label><input type="checkbox" id="opt-pages"> PDF 加入頁碼標記</label>
+    <label><input type="checkbox" id="opt-images"> 保留內嵌圖片（Base64，DOCX / HTML）</label>
+  </div>
+
+  <div id="bulk" hidden>
+    <button class="btn ghost" id="copy-all" type="button">複製全部</button>
+    <button class="btn ghost save" id="save-all" type="button">下載合併 .md</button>
+    <button class="btn ghost" id="clear" type="button">清除全部</button>
+  </div>
+  <div id="results"></div>
+  <p id="empty">尚未轉換任何檔案</p>
+
+  <details class="notes">
+    <summary>使用須知與限制</summary>
+    <ul>
+      <li>處理病歷、個資（PII / PHI）等機密文件時，建議把本頁存成 HTML 檔，<b>拔掉網路後</b>直接用瀏覽器開啟使用，效果相同。</li>
+      <li>PDF 只擷取文字層（Text layer）；掃描影像型 PDF 需另做光學字元辨識（OCR），本工具不會把檔案送出做 OCR。</li>
+      <li>PDF 的標題、段落是依字級與行距推估，複雜版面（多欄、表格）可能需要手動整理。</li>
+      <li>不支援舊版 .doc / .xls / .ppt 與加密（密碼保護）檔案，請先另存為新版格式。</li>
+      <li>CSV／TXT 會自動判斷 UTF-8 或 Big5 編碼。XLSX 的日期儲存格會轉為 YYYY-MM-DD。</li>
+      <li>轉換引擎：pdf.js 4.10（Mozilla）、mammoth（DOCX）、JSZip、Turndown；XLSX / PPTX / EPUB / CSV 為自行撰寫的解析器（不使用有已知漏洞的舊版 SheetJS）。</li>
+    </ul>
+  </details>
+</main>
+<script type="application/json" id="cmap-data">__CMAPS__</script>
+<script type="text/plain" id="pdf-worker">__PDFWORKER__</script>
+<script>__JSZIP__</script>
+<script>__MAMMOTH__</script>
+<script>__TURNDOWN__</script>
+<script>__GFM__</script>
+<script type="module">__PDFJS__</script>
+<script type="module">__APP__</script>
+</body>
+</html>
