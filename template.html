@@ -36,6 +36,7 @@ h1{font-size:1.55rem;margin:0 0 4px;letter-spacing:.01em}
 .drop strong{display:block;font-size:1.08rem;margin-bottom:4px}
 .drop .fmt{color:var(--muted);font-size:.88rem}
 .opts{display:flex;flex-wrap:wrap;gap:8px 22px;margin:12px 2px 22px;font-size:.9rem;color:var(--muted)}
+.opts select{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:1px 4px}
 .opts label{display:flex;gap:6px;align-items:center;cursor:pointer}
 .btn{font:inherit;font-size:.86rem;border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);border-radius:8px;padding:5px 12px;cursor:pointer;white-space:nowrap}
 .btn.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
@@ -86,13 +87,18 @@ code{font-family:var(--mono);font-size:.85em;background:var(--accent-soft);paddi
 
   <div class="drop" id="drop" tabindex="0" role="button" aria-label="選擇或拖放檔案">
     <strong>拖放檔案到這裡，或點一下選擇檔案</strong>
-    <span class="fmt">PDF · DOCX · XLSX · PPTX · HTML · EPUB · CSV / TSV · TXT · JSON · XML　（可一次多檔，單檔上限 100 MB）</span>
+    <span class="fmt">PDF · DOCX · XLSX · PPTX · HTML · EPUB · CSV / TSV · TXT · JSON · XML　（可一次多檔）</span>
   </div>
   <input type="file" id="file" multiple hidden accept=".pdf,.docx,.xlsx,.xlsm,.pptx,.html,.htm,.xhtml,.epub,.csv,.tsv,.txt,.md,.markdown,.json,.xml">
 
   <div class="opts">
     <label><input type="checkbox" id="opt-pages"> PDF 加入頁碼標記</label>
     <label><input type="checkbox" id="opt-images"> 保留內嵌圖片（Base64，DOCX / HTML）</label>
+    <label>單檔上限 <select id="opt-limit">
+      <option value="100" selected>100 MB</option><option value="300">300 MB</option>
+      <option value="500">500 MB</option><option value="1024">1 GB</option><option value="0">不限制</option>
+    </select></label>
+    <span id="limit-note" style="color:var(--warn)"></span>
   </div>
 
   <div id="bulk" hidden>

@@ -36,6 +36,7 @@ h1{font-size:1.55rem;margin:0 0 4px;letter-spacing:.01em}
 .drop strong{display:block;font-size:1.08rem;margin-bottom:4px}
 .drop .fmt{color:var(--muted);font-size:.88rem}
 .opts{display:flex;flex-wrap:wrap;gap:8px 22px;margin:12px 2px 22px;font-size:.9rem;color:var(--muted)}
+.opts select{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:1px 4px}
 .opts label{display:flex;gap:6px;align-items:center;cursor:pointer}
 .btn{font:inherit;font-size:.86rem;border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);border-radius:8px;padding:5px 12px;cursor:pointer;white-space:nowrap}
 .btn.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
@@ -86,13 +87,18 @@ code{font-family:var(--mono);font-size:.85em;background:var(--accent-soft);paddi
 
   <div class="drop" id="drop" tabindex="0" role="button" aria-label="選擇或拖放檔案">
     <strong>拖放檔案到這裡，或點一下選擇檔案</strong>
-    <span class="fmt">PDF · DOCX · XLSX · PPTX · HTML · EPUB · CSV / TSV · TXT · JSON · XML　（可一次多檔，單檔上限 100 MB）</span>
+    <span class="fmt">PDF · DOCX · XLSX · PPTX · HTML · EPUB · CSV / TSV · TXT · JSON · XML　（可一次多檔）</span>
   </div>
   <input type="file" id="file" multiple hidden accept=".pdf,.docx,.xlsx,.xlsm,.pptx,.html,.htm,.xhtml,.epub,.csv,.tsv,.txt,.md,.markdown,.json,.xml">
 
   <div class="opts">
     <label><input type="checkbox" id="opt-pages"> PDF 加入頁碼標記</label>
     <label><input type="checkbox" id="opt-images"> 保留內嵌圖片（Base64，DOCX / HTML）</label>
+    <label>單檔上限 <select id="opt-limit">
+      <option value="100" selected>100 MB</option><option value="300">300 MB</option>
+      <option value="500">500 MB</option><option value="1024">1 GB</option><option value="0">不限制</option>
+    </select></label>
+    <span id="limit-note" style="color:var(--warn)"></span>
   </div>
 
   <div id="bulk" hidden>
@@ -1142,13 +1148,23 @@ return exports;
 // 所有轉換都在本機瀏覽器內完成；頁面的 CSP 設定 connect-src 'none'，任何對外連線都會被瀏覽器拒絕。
 'use strict';
 
+const MB = 1024 * 1024;
 const LIMITS = {
-  maxFileBytes: 100 * 1024 * 1024,      // 單檔上限 100 MB
-  maxZipUncompressed: 600 * 1024 * 1024, // 壓縮檔解開後總量上限（防 zip bomb）
+  maxFileBytes: 100 * MB,                // 單檔上限，可在頁面上調整
+  maxZipUncompressed: 600 * MB,          // 壓縮檔解開後總量上限（防 zip bomb）
   maxZipEntries: 20000,
   maxZipRatio: 200,                      // 解壓縮比上限
   maxPdfPages: 2000,
 };
+function applySizeLimit(mb) {
+  const unlimited = mb === 0;
+  LIMITS.maxFileBytes = unlimited ? Infinity : mb * MB;
+  // 解壓縮總量與 PDF 頁數上限隨單檔上限放寬；壓縮比檢查維持不變，仍可擋下 zip bomb
+  LIMITS.maxZipUncompressed = unlimited ? 8192 * MB : Math.max(600, mb * 6) * MB;
+  LIMITS.maxPdfPages = mb >= 500 || unlimited ? 20000 : mb >= 300 ? 8000 : 2000;
+  const note = $('#limit-note');
+  if (note) note.textContent = mb > 300 || unlimited ? '大檔案會佔用大量記憶體，建議用電腦版瀏覽器並關閉其他分頁' : '';
+}
 
 const $ = (s, r = document) => r.querySelector(s);
 const el = (tag, props = {}, ...kids) => {
@@ -1769,7 +1785,7 @@ async function handleFiles(fileList) {
     const card = addCard(file);
     try {
       if (!CONVERTERS[ext]) throw new Error(`不支援 .${ext} 格式`);
-      if (file.size > LIMITS.maxFileBytes) throw new Error('檔案超過 100 MB 上限');
+      if (file.size > LIMITS.maxFileBytes) throw new Error(`檔案 ${(file.size / MB).toFixed(0)} MB，超過目前的單檔上限 ${(LIMITS.maxFileBytes / MB).toFixed(0)} MB，可在上方「單檔上限」調高`);
       const buf = await file.arrayBuffer();
       const problem = sniffMismatch(ext, new Uint8Array(buf, 0, Math.min(8, buf.byteLength)));
       if (problem) throw new Error(problem);
@@ -1801,12 +1817,23 @@ function fillCard(card, file, md, warnings, ms) {
   results.push(entry);
   card.querySelector('.meta').textContent = `${(file.size / 1024).toFixed(1)} KB → ${md.length.toLocaleString()} 字元 · ${Math.round(ms)} ms`;
   const ta = el('textarea', { spellcheck: 'false', 'aria-label': `${file.name} 的 Markdown 結果` });
-  ta.value = md; // 只當純文字顯示，不會執行文件內容中的任何 HTML/腳本
-  ta.addEventListener('input', () => { entry.md = ta.value; });
+  // 只當純文字顯示，不會執行文件內容中的任何 HTML/腳本。
+  // 超大結果只顯示開頭預覽，避免瀏覽器分頁因為文字框過大而當掉；複製與下載仍是完整內容。
+  const PREVIEW = 300000;
+  const big = md.length > PREVIEW * 4;
+  if (big) {
+    ta.value = md.slice(0, PREVIEW);
+    ta.readOnly = true;
+    warnings = [...warnings, `結果共 ${md.length.toLocaleString()} 字元，畫面只預覽前 ${PREVIEW.toLocaleString()} 字元（唯讀）；請用「複製」或「下載」取得完整內容`];
+  } else {
+    ta.value = md;
+    ta.addEventListener('input', () => { entry.md = ta.value; });
+  }
+  const content = () => (big ? entry.md : ta.value);
   const actions = el('div', { class: 'actions' },
-    el('button', { class: 'btn', text: '複製', onclick: (e) => copyText(ta.value, e.currentTarget) }),
-    el('button', { class: 'btn save', text: '下載 .md', onclick: (e) => saveFile(entry.name, ta.value, e.currentTarget) }),
-    el('button', { class: 'btn ghost', text: '移除', onclick: () => { results.splice(results.indexOf(entry), 1); ta.value = ''; card.remove(); refreshEmpty(); } }));
+    el('button', { class: 'btn', text: '複製', onclick: (e) => copyText(content(), e.currentTarget) }),
+    el('button', { class: 'btn save', text: '下載 .md', onclick: (e) => saveFile(entry.name, content(), e.currentTarget) }),
+    el('button', { class: 'btn ghost', text: '移除', onclick: () => { results.splice(results.indexOf(entry), 1); entry.md = ''; ta.value = ''; card.remove(); refreshEmpty(); } }));
   card.querySelector('header').append(actions);
   if (warnings.length) card.append(el('div', { class: 'warn', text: '⚠ ' + warnings.join('；') }));
   card.append(ta);
@@ -1817,7 +1844,9 @@ function failCard(card, err) {
   card.classList.add('error');
   card.querySelector('.meta').textContent = '轉換失敗';
   const msg = String((err && err.message) || err).replace(/^Error:\s*/, '');
-  card.append(el('div', { class: 'warn', text: '✗ ' + (/password|encrypt/i.test(msg) ? '檔案受密碼保護，請先解除加密' : msg) }));
+  const friendly = /password|encrypt/i.test(msg) ? '檔案受密碼保護，請先解除加密'
+    : /allocation|out of memory|Array buffer|RangeError/i.test(msg) ? '瀏覽器記憶體不足，請關閉其他分頁、改用電腦版瀏覽器，或先把檔案拆小' : msg;
+  card.append(el('div', { class: 'warn', text: '✗ ' + friendly }));
   card.append(el('button', { class: 'btn ghost small', text: '移除', onclick: () => { card.remove(); refreshEmpty(); } }));
 }
 
@@ -1888,6 +1917,8 @@ window.addEventListener('dragover', (e) => e.preventDefault());
 window.addEventListener('drop', (e) => e.preventDefault());
 
 $('#selftest').addEventListener('click', selfTest);
+$('#opt-limit').addEventListener('change', (e) => applySizeLimit(Number(e.target.value)));
+applySizeLimit(Number($('#opt-limit').value));
 $('#copy-all').addEventListener('click', (e) => copyText(combined(), e.currentTarget));
 $('#save-all').addEventListener('click', (e) => saveFile('合併輸出.md', combined(), e.currentTarget));
 $('#clear').addEventListener('click', clearAll);
